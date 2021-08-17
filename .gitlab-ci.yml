@@ -1,39 +1,80 @@
 ---
-stages:
+stages: 
   - syntax
   - unit
+  - acceptance
+
+image:
+  name: puppet/pdk
+  entrypoint: [""]
+
+before_script:
+  - pdk --version
+  #- mkdir ~/.ssh && ssh-keyscan -t rsa <internal_gitlab_hostname> >> ~/.ssh/known_hosts  # useful for gitlab EE and ci runners
 
 default:
   cache:
     paths:
+      - spec/fixtures/modules
       - vendor/bundle
 
-  before_script: &before_script
-    - bundle -v
-    - rm Gemfile.lock || true
-    - "# Update system gems if requested. This is useful to temporarily workaround troubles in the test runner"
-    - "# Set `rubygems_version` in the .sync.yml to set a value"
-    - "# Ignore exit code of SIGPIPE'd yes to not fail with shell's pipefail set"
-    - '[ -z "$RUBYGEMS_VERSION" ] || (yes || true) | gem update --system $RUBYGEMS_VERSION'
-    - gem --version
-    - bundle -v
-    - bundle install --without system_tests --path vendor/bundle --jobs $(nproc)
-
-validate lint check rubocop-Ruby 2.5.7-Puppet ~> 6:
+.validate_template: &validate_config
   stage: syntax
-  image: ruby:2.5.7
   script:
-    - bundle exec rake validate lint check rubocop
-  variables:
-    PUPPET_GEM_VERSION: '~> 6'
+    - pdk validate
 
-parallel_spec-Ruby 2.5.7-Puppet ~> 6:
+.spec_template: &spec_config
   stage: unit
-  image: ruby:2.5.7
   script:
-    - bundle exec rake parallel_spec
+    - pdk test unit --parallel
+
+pdk_validate ruby 2.5 ~> puppet 6:
+  <<: *validate_config
   variables:
-    PUPPET_GEM_VERSION: '~> 6'
+    PDK_PUPPET_VERSION: '6'
+
+pdk_validate ruby 2.7 ~> puppet 7:
+  <<: *validate_config
+  variables:
+    PDK_PUPPET_VERSION: '7'
+
+pdk_unit ruby 2.5 ~> puppet 6:
+  <<: *spec_config
+  variables:
+    PDK_PUPPET_VERSION: '6'
+
+pdk_unit ruby 2.5 ~> puppet 6:
+  <<: *spec_config
+  variables:
+    PDK_PUPPET_VERSION: '6'
+
+
+.litmus_test: &litmus_test
+  stage: acceptance
+  services:
+    - docker:dind
+  before_script:
+    - "pdk bundle exec rake spec_prep"
+    - "pdk bundle exec rake 'litmus:provision[docker, ${SUT_OS_IMAGE}]'"
+    - "pdk bundle exec bolt command run 'yum install wget -y' --inventoryfile inventory.yaml --nodes='localhost*'"
+    - "pdk bundle exec rake 'litmus::install_agent[puppet${PDK_PUPPET_VERSION}]'"
+    - "pdk bundle exec bolt command run 'puppet --version' --targets localhost:2222 --inventoryfile spec/fixtures/litmus_inventory.yaml"
+    - "pdk bundle exec rake litmus:install_module"
+    - "pdk bundle exec rake 'litmus:install_modules_from_directory[spec/fixtures/modules]'"
+  script:
+    - "pdk bundle exec rake litmus:acceptance:parallel"
+
+acceptance_test puppet6:
+  variables:
+    PDK_PUPPET_VERSION: 6
+    SUT_OS_IMAGE: "litmusimage/centos:8"
+  <<: *litmus_test
+
+acceptance_test puppet7:
+  variables:
+    PDK_PUPPET_VERSION: 7
+    SUT_OS_IMAGE: "litmusimage/centos:8"
+  <<: *litmus_test
 
 validate lint check rubocop-Ruby 2.7.2-Puppet ~> 7:
   stage: syntax
