@@ -5,7 +5,7 @@ stages:
   - acceptance
 
 image:
-  name: puppet/pdk
+  name: puppet/puppet-dev-tools:2022-04-21-e44b72b
   entrypoint: [""]
 
 before_script:
@@ -55,8 +55,8 @@ pdk_unit ruby 2.5 ~> puppet 6:
     - docker:dind
   before_script:
     - "pdk bundle exec rake spec_prep"
-    - "pdk bundle exec rake 'litmus:provision[docker, ${SUT_OS_IMAGE}]'"
-    - "pdk bundle exec bolt command run 'yum install wget -y' --inventoryfile inventory.yaml --nodes='localhost*'"
+    - "pdk bundle exec rake \"litmus:provision[docker, ${SUT_OS_IMAGE}]\""
+    - "pdk bundle exec bolt command run 'yum install wget -y' --inventoryfile spec/fixtures/litmus_inventory.yaml -t 'localhost*'"
     - "pdk bundle exec rake 'litmus::install_agent[puppet${PDK_PUPPET_VERSION}]'"
     - "pdk bundle exec bolt command run 'puppet --version' --targets localhost:2222 --inventoryfile spec/fixtures/litmus_inventory.yaml"
     - "pdk bundle exec rake litmus:install_module"
@@ -64,7 +64,7 @@ pdk_unit ruby 2.5 ~> puppet 6:
   script:
     - "pdk bundle exec rake litmus:acceptance:parallel"
 
-acceptance_test puppet6:
+acceptance_test puppet6 centos8:
   variables:
     PDK_PUPPET_VERSION: 6
     SUT_OS_IMAGE: "litmusimage/centos:8"
@@ -73,22 +73,22 @@ acceptance_test puppet6:
 acceptance_test puppet7:
   variables:
     PDK_PUPPET_VERSION: 7
-    SUT_OS_IMAGE: "litmusimage/centos:8"
+    SUT_OS_IMAGE: "litmusimage/centos:7"
   <<: *litmus_test
 
 validate lint check rubocop-Ruby 2.7.2-Puppet ~> 7:
   stage: syntax
-  image: ruby:2.7.2
+  image: puppet/puppet-dev-tools:2022-04-21-e44b72b
   script:
-    - bundle exec rake validate lint check rubocop
+    - pdk validate
   variables:
     PUPPET_GEM_VERSION: '~> 7'
 
 parallel_spec-Ruby 2.7.2-Puppet ~> 7:
   stage: unit
-  image: ruby:2.7.2
+  image: puppet/puppet-dev-tools:2022-04-21-e44b72b
   script:
-    - bundle exec rake parallel_spec
+    - pdk test unit
   variables:
     PUPPET_GEM_VERSION: '~> 7'
 
