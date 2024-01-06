@@ -19,10 +19,11 @@ class tailscale (
   Variant[String, Sensitive[String]] $auth_key,
   Stdlib::HttpUrl $base_pkg_url,
   Boolean $manage_package = true,
-  Boolean $manage_service = true,
+  Boolean $manage_service = false,
   Boolean $manage_package_repository = true,
   Hash $up_options = {},
-  Boolean $use_node_encrypt = false
+  Boolean $use_node_encrypt = false,
+  String $service_provider = undef
 ) {
   if $manage_package_repository {
     case $facts['os']['family'] {
@@ -59,11 +60,6 @@ class tailscale (
     package { 'tailscale':
       ensure  => present,
     }
-  }
-  if ($::facts.dig('os', 'distro', 'id') == 'Pop') {
-    $service_provider = 'systemd'
-  } else {
-    $service_provider = undef
   }
   if $manage_service {
     service { 'tailscaled':
